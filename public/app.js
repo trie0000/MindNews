@@ -339,11 +339,19 @@ function updateVisibility() {
   allLinks.forEach(lnk => {
     const el = document.querySelector(`[data-lid="${CSS.escape(lnk.id)}"]`);
     if (!el) return;
-    const vis      = isNodeVisible(lnk.target.id);
-    const expanded = !!expandedState[lnk.source.id];
+    const vis = isNodeVisible(lnk.target.id);
     el.style.transition    = 'stroke-opacity 0.3s';
     el.style.strokeOpacity = vis ? (lnk.depth === 1 ? '0.55' : '0.45') : '0';
-    el.style.strokeWidth   = expanded ? '3' : (lnk.depth === 1 ? '2' : '1.5');
+    el.style.strokeWidth   = lnk.depth === 1 ? '2' : '1.5'; // 経路ハイライトは highlightPath() で上書き
+  });
+
+  // 展開状態に応じてノード円スタイルを全件同期
+  // （auto-collapse で expandedState が false になったノードのスタイルも戻す）
+  d3.selectAll('.node.topic, .node.subtopic').each(function(d) {
+    const exp = !!expandedState[d.id];
+    d3.select(this).select('circle')
+      .style('fill',         exp ? d.color + '55' : d.color + '30')
+      .style('stroke-width', exp ? '2.5px' : '1.5px');
   });
 
   // 表示変化後にラベル位置を再計算
@@ -389,14 +397,7 @@ function toggleNode(ndData) {
     expandedState[ndData.id] = true;
   }
 
-  // 展開状態に応じてノード円をハイライト
-  d3.selectAll('.node.topic, .node.subtopic')
-    .filter(d => d.id === ndData.id)
-    .select('circle')
-    .style('fill',         expandedState[ndData.id] ? ndData.color + '55' : ndData.color + '30')
-    .style('stroke-width', expandedState[ndData.id] ? '2.5px' : '1.5px');
-
-  updateVisibility();
+  updateVisibility(); // ノード円スタイルも updateVisibility 内で全件同期
 }
 
 // ---- 新着状態を解除（リンク参照時） ----
@@ -433,6 +434,37 @@ function markArticleViewed(articleId) {
   }
 }
 
+// ---- 経路ハイライト（中心ノード → 選択記事） ----
+function highlightPath(articleId) {
+  // 中心から記事までの祖先ノード ID セットを構築
+  const pathIds = new Set();
+  let nid = articleId;
+  while (nid) {
+    pathIds.add(nid);
+    nid = nodeMap[nid]?.parentId;
+  }
+
+  allLinks.forEach(lnk => {
+    const el = document.querySelector(`[data-lid="${CSS.escape(lnk.id)}"]`);
+    if (!el) return;
+    const onPath = pathIds.has(lnk.source.id) && pathIds.has(lnk.target.id);
+    el.style.strokeWidth = onPath ? '3.5' : (lnk.depth === 1 ? '2' : '1.5');
+    el.style.strokeOpacity = onPath
+      ? '0.9'
+      : (isNodeVisible(lnk.target.id) ? (lnk.depth === 1 ? '0.55' : '0.45') : '0');
+  });
+}
+
+function resetPathHighlight() {
+  allLinks.forEach(lnk => {
+    const el = document.querySelector(`[data-lid="${CSS.escape(lnk.id)}"]`);
+    if (!el) return;
+    el.style.strokeWidth   = lnk.depth === 1 ? '2' : '1.5';
+    el.style.strokeOpacity = isNodeVisible(lnk.target.id)
+      ? (lnk.depth === 1 ? '0.55' : '0.45') : '0';
+  });
+}
+
 // ---- 詳細パネル ----
 function showDetailPanel(d) {
   const panel    = document.getElementById('detail-panel');
@@ -456,10 +488,12 @@ function showDetailPanel(d) {
   linkEl.onclick = () => markArticleViewed(d.id);
 
   panel.classList.add('open');
+  highlightPath(d.id);
 }
 
 function hideDetailPanel() {
   document.getElementById('detail-panel').classList.remove('open');
+  resetPathHighlight();
 }
 
 document.getElementById('detail-close').addEventListener('click', hideDetailPanel);
