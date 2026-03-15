@@ -337,6 +337,8 @@ function positionArticleLabels() {
     });
 
     // 2) 隣接ラベルが重ならない弦長制約
+    //    ただし R_CAP を超えない範囲でのみ適用（密集グループで R が爆発しないよう）
+    const R_CAP_P1 = 120;
     for (let i = 0; i < n; i++) {
       const a = grp[i], b = grp[(i + 1) % n];
       let dAngle = b.angle - a.angle;
@@ -345,6 +347,7 @@ function positionArticleLabels() {
       const minChord = a.halfDiag + b.halfDiag + GAP;
       R = Math.max(R, minChord / (2 * sinHalf));
     }
+    R = Math.min(R, R_CAP_P1); // Phase 1 での上限キャップ（必須）
 
     groupData.set(parentId, { px, py, grp, R });
   });
@@ -368,7 +371,7 @@ function positionArticleLabels() {
   // 異なるグループのラベル AABB が重なっている場合、
   // 両グループの R を拡大して再配置する。最大 10 回反復。
   const MAX_ITER = 10;
-  const R_CAP = 300;
+  const R_CAP = 120;
   const gdList = Array.from(groupData.values());
 
   for (let iter = 0; iter < MAX_ITER; iter++) {
@@ -387,8 +390,9 @@ function positionArticleLabels() {
             if (overlapX > 0 && overlapY > 0) {
               // 重なり量の小さい軸方向へ両グループを押し広げる
               const push = Math.min(overlapX, overlapY) / 2 + 1;
-              gdA.R = Math.min(gdA.R + push, R_CAP);
-              gdB.R = Math.min(gdB.R + push, R_CAP);
+              // R を上げるのみ（下げない）
+              if (gdA.R < R_CAP) gdA.R = Math.min(gdA.R + push, R_CAP);
+              if (gdB.R < R_CAP) gdB.R = Math.min(gdB.R + push, R_CAP);
               placeGroup(gdA);
               placeGroup(gdB);
               changed = true;
