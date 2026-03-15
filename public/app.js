@@ -275,13 +275,7 @@ function schedulePositionLabels() {
 function positionArticleLabels() {
   const GAP = 3; // SVG units — ラベル間の最小隙間
 
-  // dx/dy をリセット
-  document.querySelectorAll('.node.article text').forEach(el => {
-    el.setAttribute('dx', '0');
-    el.setAttribute('dy', '0');
-  });
-
-  // 表示中の記事ラベルのみ
+  // 表示中の記事ラベルのみ（opacity で判定）
   const textEls = Array.from(document.querySelectorAll('.node.article text')).filter(el => {
     const nd = el.closest('.node.article');
     return nd && parseFloat(nd.style.opacity || '0') > 0.5;
@@ -297,9 +291,8 @@ function positionArticleLabels() {
 
   // ── 各ラベルを「自分の記事ノードの外周」へ配置 ──
   // 向きはルート中心→記事ノードの放射方向に統一。
-  // 全ラベルで共通 R を使うと、ルートから遠い記事のラベルに
-  // 引きずられて近い記事のラベルが記事から離れすぎるため、
-  // R は各ラベルごとに dist(center, article) + ARTICLE_RADIUS + GAP で決定する。
+  // R は各ラベルごとに dist(center, article) + ARTICLE_RADIUS + GAP で決定する
+  // （共通 R だとルートから遠い記事に引きずられ近い記事のラベルが離れすぎる）。
   textEls.forEach(el => {
     const nid = el.closest('.node.article').getAttribute('data-nid');
     const nd  = nodeMap[nid];
@@ -318,6 +311,9 @@ function positionArticleLabels() {
     // ラベル中心 = 記事ノード中心 + (ARTICLE_RADIUS + GAP + edgeOffset) × 放射方向
     el.setAttribute('dx', (cosA * (ARTICLE_RADIUS + GAP + edgeOffset)).toFixed(2));
     el.setAttribute('dy', (sinA * (ARTICLE_RADIUS + GAP + edgeOffset)).toFixed(2));
+
+    // 位置確定後に表示（初期レンダリング時の誤位置フラッシュを防ぐ）
+    el.style.opacity = '';
   });
 }
 
@@ -581,7 +577,7 @@ function renderInitial() {
     .attr('stroke-width', 1.5)
     .style('pointer-events', 'none');
 
-  // 記事（葉）テキスト — positionArticleLabels() で同心円上に配置
+  // 記事（葉）テキスト — positionArticleLabels() で位置確定後に表示
   nodeG.filter(d => d.type === 'article')
     .append('text')
     .text(d => d.shortLabel)
@@ -590,6 +586,7 @@ function renderInitial() {
     .attr('dy', '0')
     .attr('font-size', '8px')
     .attr('fill', d => d.isLlm ? '#c9d1d9' : '#8b949e')
+    .style('opacity', '0')          // 位置確定まで非表示
     .style('pointer-events', 'none');
 
   // center + topic をアニメーション表示（native DOM — D3 transition は非表示タブで失速するため）
