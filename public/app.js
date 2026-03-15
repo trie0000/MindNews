@@ -6,9 +6,18 @@ const PALETTE = [
 
 const CENTER_COLOR    = '#ffffff';
 const CENTER_RADIUS   = 38;
-const TOPIC_RADIUS    = 22;   // 深さ1（トップカテゴリ）
-const SUBTOPIC_RADIUS = 15;   // 深さ2（サブカテゴリ中間ノード）
+const TOPIC_RADIUS    = 22;   // 深さ1（トップカテゴリ）基準値（後方互換用）
+const SUBTOPIC_RADIUS = 15;   // 深さ2（サブカテゴリ）基準値（後方互換用）
 const ARTICLE_RADIUS  = 6;    // 葉（記事）
+
+// 記事件数に応じてノード半径をスケーリングする
+function nodeRadius(d) {
+  if (d.type === 'center')  return CENTER_RADIUS;
+  if (d.type === 'article') return ARTICLE_RADIUS;
+  if (d.type === 'topic')   return Math.min(32, Math.max(18, 12 + Math.sqrt(d.childCount) * 2));
+  // subtopic
+  return Math.min(22, Math.max(11, 9 + Math.sqrt(d.childCount) * 2));
+}
 
 let svg, width, height, g, zoomBehavior;
 let currentData      = null;
@@ -330,9 +339,11 @@ function updateVisibility() {
   allLinks.forEach(lnk => {
     const el = document.querySelector(`[data-lid="${CSS.escape(lnk.id)}"]`);
     if (!el) return;
-    const vis = isNodeVisible(lnk.target.id);
+    const vis      = isNodeVisible(lnk.target.id);
+    const expanded = !!expandedState[lnk.source.id];
     el.style.transition    = 'stroke-opacity 0.3s';
     el.style.strokeOpacity = vis ? (lnk.depth === 1 ? '0.55' : '0.45') : '0';
+    el.style.strokeWidth   = expanded ? '3' : (lnk.depth === 1 ? '2' : '1.5');
   });
 
   // 表示変化後にラベル位置を再計算
@@ -496,12 +507,7 @@ function renderInitial() {
 
   // 円
   nodeG.append('circle')
-    .attr('r', d => {
-      if (d.type === 'center')   return CENTER_RADIUS;
-      if (d.type === 'article')  return ARTICLE_RADIUS;
-      if (d.type === 'topic')    return TOPIC_RADIUS;
-      return SUBTOPIC_RADIUS;
-    })
+    .attr('r', d => nodeRadius(d))
     .attr('fill', d => {
       if (d.type === 'center')  return '#1a2332';
       if (d.type === 'article') return d.isNew ? d.color : d.color + 'cc';
@@ -534,35 +540,15 @@ function renderInitial() {
     .attr('fill', d => d.color)
     .style('pointer-events', 'none');
 
-  // トピック 件数バッジ
-  nodeG.filter(d => d.type === 'topic')
-    .append('text').attr('class', 'badge')
-    .text(d => `${d.childCount}件`)
-    .attr('text-anchor', 'middle')
-    .attr('dy', '1.1em')
-    .attr('font-size', '8px')
-    .attr('fill', d => d.color + 'aa')
-    .style('pointer-events', 'none');
-
   // サブトピック（深さ2+、内部ノード）テキスト
   nodeG.filter(d => d.type === 'subtopic')
     .append('text')
     .text(d => d.label)
     .attr('text-anchor', 'middle')
-    .attr('dy', '-0.3em')
+    .attr('dy', '0.35em')
     .attr('font-size', '9px')
     .attr('font-weight', '600')
     .attr('fill', d => d.color)
-    .style('pointer-events', 'none');
-
-  // サブトピック 件数バッジ
-  nodeG.filter(d => d.type === 'subtopic')
-    .append('text').attr('class', 'badge')
-    .text(d => `${d.childCount}件`)
-    .attr('text-anchor', 'middle')
-    .attr('dy', '1.1em')
-    .attr('font-size', '7px')
-    .attr('fill', d => d.color + 'aa')
     .style('pointer-events', 'none');
 
   // 新着ドットバッジ（topic / subtopic で hasNew のみ）
@@ -570,8 +556,8 @@ function renderInitial() {
     .append('circle')
     .attr('class', 'new-dot')
     .attr('r', d => d.type === 'topic' ? 5 : 4)
-    .attr('cx', d => d.type === 'topic' ? TOPIC_RADIUS * 0.72 : SUBTOPIC_RADIUS * 0.72)
-    .attr('cy', d => d.type === 'topic' ? -TOPIC_RADIUS * 0.72 : -SUBTOPIC_RADIUS * 0.72)
+    .attr('cx', d => nodeRadius(d) * 0.72)
+    .attr('cy', d => -nodeRadius(d) * 0.72)
     .attr('fill', '#f0b429')
     .attr('stroke', '#0d1117')
     .attr('stroke-width', 1.5)
