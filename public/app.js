@@ -298,45 +298,45 @@ function positionArticleLabels() {
     const w   = lr.width  / k;
     const h   = lr.height / k;
     return {
-      el,
-      nd,
+      el, nd,
       ax: nd.x, ay: nd.y,
       parentId: nd.parentId,
       w, h,
       halfDiag: Math.sqrt(w * w + h * h) / 2,
+      lx: nd.x, ly: nd.y,  // 最終配置座標（後続で更新）
     };
   });
 
-  // 親グループごとに処理
+  // ── Phase 1: グループ内の R を幾何計算で決定 ──
   const parentGroups = new Map();
   labels.forEach(lb => {
     if (!parentGroups.has(lb.parentId)) parentGroups.set(lb.parentId, []);
     parentGroups.get(lb.parentId).push(lb);
   });
 
+  // グループデータ: parentId → { px, py, grp, R }
+  const groupData = new Map();
+
   parentGroups.forEach((grp, parentId) => {
     const parent = nodeMap[parentId];
     if (!parent) return;
     const px = parent.x, py = parent.y;
 
-    // 各記事の親ノードからの角度を計算
     grp.forEach(lb => {
       lb.angle = Math.atan2(lb.ay - py, lb.ax - px);
     });
-    grp.sort((a, b) => a.angle - b.angle); // 角度順にソート
+    grp.sort((a, b) => a.angle - b.angle);
 
     const n = grp.length;
 
-    // ── 半径 R の決定（ラベルの親方向の端を基準とする） ──
-    // 1) 各ノードの外周から GAP 離れた位置に「ラベルの端」が来る最小 R
+    // 1) ノード外周 + GAP を確保する最小 R
     let R = 0;
     grp.forEach(lb => {
       const dist = Math.sqrt((lb.ax - px) ** 2 + (lb.ay - py) ** 2);
       R = Math.max(R, dist + ARTICLE_RADIUS + GAP);
     });
 
-    // 2) 隣接ラベルの端同士が重ならない角度制約から R を拡大
-    //    弦長公式: 2R·sin(Δθ/2) ≥ halfDiag_i + halfDiag_j + GAP
+    // 2) 隣接ラベルが重ならない弦長制約
     for (let i = 0; i < n; i++) {
       const a = grp[i], b = grp[(i + 1) % n];
       let dAngle = b.angle - a.angle;
@@ -346,21 +346,66 @@ function positionArticleLabels() {
       R = Math.max(R, minChord / (2 * sinHalf));
     }
 
-    // 3) 上限キャップ
-    R = Math.min(R, 300);
+    groupData.set(parentId, { px, py, grp, R });
+  });
 
-    // ── ラベル配置 ──
-    // edgeOffset: ラベル矩形を角度 θ 方向に投影したときの
-    //             親方向端面〜中心の距離（直交成分の加重和）
-    // → ラベル中心を (R + edgeOffset) に置くことで
-    //   ラベルの「親に最も近い端」がちょうど半径 R 上に来る
+  // グループ内ラベルを現在の R で配置し lx/ly を更新するヘルパー
+  // edgeOffset: ラベル矩形の「親方向の端面」を R 上に揃える補正
+  function placeGroup(gd) {
+    const { px, py, grp, R } = gd;
     grp.forEach(lb => {
       const cosA = Math.cos(lb.angle), sinA = Math.sin(lb.angle);
       const edgeOffset = Math.abs(cosA) * lb.w / 2 + Math.abs(sinA) * lb.h / 2;
-      const lx = px + (R + edgeOffset) * cosA;
-      const ly = py + (R + edgeOffset) * sinA;
-      lb.el.setAttribute('dx', (lx - lb.ax).toFixed(2));
-      lb.el.setAttribute('dy', (ly - lb.ay).toFixed(2));
+      lb.lx = px + (R + edgeOffset) * cosA;
+      lb.ly = py + (R + edgeOffset) * sinA;
+    });
+  }
+
+  // 全グループを初期配置
+  groupData.forEach(gd => placeGroup(gd));
+
+  // ── Phase 2: グループ間の重なりを反復解消 ──
+  // 異なるグループのラベル AABB が重なっている場合、
+  // 両グループの R を拡大して再配置する。最大 10 回反復。
+  const MAX_ITER = 10;
+  const R_CAP = 300;
+  const gdList = Array.from(groupData.values());
+
+  for (let iter = 0; iter < MAX_ITER; iter++) {
+    let changed = false;
+
+    for (let gi = 0; gi < gdList.length; gi++) {
+      for (let gj = gi + 1; gj < gdList.length; gj++) {
+        const gdA = gdList[gi], gdB = gdList[gj];
+
+        for (const lbA of gdA.grp) {
+          for (const lbB of gdB.grp) {
+            // AABB 重なり判定（text-anchor="middle" なので中心が lx/ly）
+            const overlapX = (lbA.w + lbB.w) / 2 + GAP - Math.abs(lbA.lx - lbB.lx);
+            const overlapY = (lbA.h + lbB.h) / 2 + GAP - Math.abs(lbA.ly - lbB.ly);
+
+            if (overlapX > 0 && overlapY > 0) {
+              // 重なり量の小さい軸方向へ両グループを押し広げる
+              const push = Math.min(overlapX, overlapY) / 2 + 1;
+              gdA.R = Math.min(gdA.R + push, R_CAP);
+              gdB.R = Math.min(gdB.R + push, R_CAP);
+              placeGroup(gdA);
+              placeGroup(gdB);
+              changed = true;
+            }
+          }
+        }
+      }
+    }
+
+    if (!changed) break;
+  }
+
+  // ── Phase 3: dx/dy を SVG 属性に反映 ──
+  groupData.forEach(gd => {
+    gd.grp.forEach(lb => {
+      lb.el.setAttribute('dx', (lb.lx - lb.ax).toFixed(2));
+      lb.el.setAttribute('dy', (lb.ly - lb.ay).toFixed(2));
     });
   });
 }
