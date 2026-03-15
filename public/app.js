@@ -288,67 +288,36 @@ function positionArticleLabels() {
   });
   if (!textEls.length) return;
 
-  // マインドマップの中心ノード（depth === 0）を基準点とする
+  // マインドマップの中心ノード（depth === 0）を放射方向の基準とする
   const centerNode = allNodes.find(nd => nd.depth === 0);
   if (!centerNode) return;
   const cx = centerNode.x, cy = centerNode.y;
 
   const k = d3.zoomTransform(svg.node()).k; // zoom scale（screen px → SVG unit 変換用）
 
-  // ラベルデータ収集（サイズは SVG unit 換算）
-  const labels = textEls.map(el => {
+  // ── 各ラベルを「自分の記事ノードの外周」へ配置 ──
+  // 向きはルート中心→記事ノードの放射方向に統一。
+  // 全ラベルで共通 R を使うと、ルートから遠い記事のラベルに
+  // 引きずられて近い記事のラベルが記事から離れすぎるため、
+  // R は各ラベルごとに dist(center, article) + ARTICLE_RADIUS + GAP で決定する。
+  textEls.forEach(el => {
     const nid = el.closest('.node.article').getAttribute('data-nid');
     const nd  = nodeMap[nid];
     const lr  = el.getBoundingClientRect();
     const w   = lr.width  / k;
     const h   = lr.height / k;
-    return {
-      el,
-      ax: nd.x, ay: nd.y,
-      w, h,
-      halfDiag: Math.sqrt(w * w + h * h) / 2,
-    };
-  });
 
-  // 中心ノードからの角度で並び替え
-  labels.forEach(lb => {
-    lb.angle = Math.atan2(lb.ay - cy, lb.ax - cx);
-  });
-  labels.sort((a, b) => a.angle - b.angle);
+    // ルート中心 → 記事ノードの単位ベクトル
+    const dx_c = nd.x - cx, dy_c = nd.y - cy;
+    const dist  = Math.sqrt(dx_c * dx_c + dy_c * dy_c) || 1;
+    const cosA  = dx_c / dist, sinA = dy_c / dist;
 
-  const n = labels.length;
+    // edgeOffset: ラベル矩形の「ルート側の端面」を記事外周に揃える補正
+    const edgeOffset = Math.abs(cosA) * w / 2 + Math.abs(sinA) * h / 2;
 
-  // ── R の決定（中心ノード基準の単一円） ──
-
-  // 1) 全記事ノードの外周から GAP 離れた位置に「ラベルの端」が来る最小 R
-  let R = 0;
-  labels.forEach(lb => {
-    const dist = Math.sqrt((lb.ax - cx) ** 2 + (lb.ay - cy) ** 2);
-    R = Math.max(R, dist + ARTICLE_RADIUS + GAP);
-  });
-  const R_BASE = R; // 記事ノードを外周に揃える基準値
-
-  // 2) 隣接ラベルが重ならない弦長制約
-  //    密集しても R_BASE + 50 以上には広げない（過剰な拡大を防止）
-  for (let i = 0; i < n; i++) {
-    const a = labels[i], b = labels[(i + 1) % n];
-    let dAngle = b.angle - a.angle;
-    if (dAngle <= 0) dAngle += 2 * Math.PI;
-    const sinHalf = Math.sin(Math.max(dAngle, 0.05) / 2);
-    const minChord = a.halfDiag + b.halfDiag + GAP;
-    R = Math.max(R, minChord / (2 * sinHalf));
-  }
-  R = Math.min(R, R_BASE + 50);
-
-  // ── 全ラベルを共通 R の円上に配置 ──
-  // edgeOffset: ラベル矩形の「中心方向の端面」を R 上に揃える補正
-  labels.forEach(lb => {
-    const cosA = Math.cos(lb.angle), sinA = Math.sin(lb.angle);
-    const edgeOffset = Math.abs(cosA) * lb.w / 2 + Math.abs(sinA) * lb.h / 2;
-    const lx = cx + (R + edgeOffset) * cosA;
-    const ly = cy + (R + edgeOffset) * sinA;
-    lb.el.setAttribute('dx', (lx - lb.ax).toFixed(2));
-    lb.el.setAttribute('dy', (ly - lb.ay).toFixed(2));
+    // ラベル中心 = 記事ノード中心 + (ARTICLE_RADIUS + GAP + edgeOffset) × 放射方向
+    el.setAttribute('dx', (cosA * (ARTICLE_RADIUS + GAP + edgeOffset)).toFixed(2));
+    el.setAttribute('dy', (sinA * (ARTICLE_RADIUS + GAP + edgeOffset)).toFixed(2));
   });
 }
 
