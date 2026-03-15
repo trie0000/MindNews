@@ -288,6 +288,11 @@ function positionArticleLabels() {
   });
   if (!textEls.length) return;
 
+  // マインドマップの中心ノード（depth === 0）を基準点とする
+  const centerNode = allNodes.find(nd => nd.depth === 0);
+  if (!centerNode) return;
+  const cx = centerNode.x, cy = centerNode.y;
+
   const k = d3.zoomTransform(svg.node()).k; // zoom scale（screen px → SVG unit 変換用）
 
   // ラベルデータ収集（サイズは SVG unit 換算）
@@ -298,119 +303,52 @@ function positionArticleLabels() {
     const w   = lr.width  / k;
     const h   = lr.height / k;
     return {
-      el, nd,
+      el,
       ax: nd.x, ay: nd.y,
-      parentId: nd.parentId,
       w, h,
       halfDiag: Math.sqrt(w * w + h * h) / 2,
-      lx: nd.x, ly: nd.y,  // 最終配置座標（後続で更新）
     };
   });
 
-  // ── Phase 1: グループ内の R を幾何計算で決定 ──
-  const parentGroups = new Map();
+  // 中心ノードからの角度で並び替え
   labels.forEach(lb => {
-    if (!parentGroups.has(lb.parentId)) parentGroups.set(lb.parentId, []);
-    parentGroups.get(lb.parentId).push(lb);
+    lb.angle = Math.atan2(lb.ay - cy, lb.ax - cx);
   });
+  labels.sort((a, b) => a.angle - b.angle);
 
-  // グループデータ: parentId → { px, py, grp, R }
-  const groupData = new Map();
+  const n = labels.length;
 
-  parentGroups.forEach((grp, parentId) => {
-    const parent = nodeMap[parentId];
-    if (!parent) return;
-    const px = parent.x, py = parent.y;
+  // ── R の決定（中心ノード基準の単一円） ──
 
-    grp.forEach(lb => {
-      lb.angle = Math.atan2(lb.ay - py, lb.ax - px);
-    });
-    grp.sort((a, b) => a.angle - b.angle);
-
-    const n = grp.length;
-
-    // 1) ノード外周 + GAP を確保する最小 R
-    let R = 0;
-    grp.forEach(lb => {
-      const dist = Math.sqrt((lb.ax - px) ** 2 + (lb.ay - py) ** 2);
-      R = Math.max(R, dist + ARTICLE_RADIUS + GAP);
-    });
-
-    // 2) 隣接ラベルが重ならない弦長制約
-    //    ただし R_CAP を超えない範囲でのみ適用（密集グループで R が爆発しないよう）
-    const R_CAP_P1 = 120;
-    for (let i = 0; i < n; i++) {
-      const a = grp[i], b = grp[(i + 1) % n];
-      let dAngle = b.angle - a.angle;
-      if (dAngle <= 0) dAngle += 2 * Math.PI;
-      const sinHalf = Math.sin(Math.max(dAngle, 0.05) / 2);
-      const minChord = a.halfDiag + b.halfDiag + GAP;
-      R = Math.max(R, minChord / (2 * sinHalf));
-    }
-    R = Math.min(R, R_CAP_P1); // Phase 1 での上限キャップ（必須）
-
-    groupData.set(parentId, { px, py, grp, R });
+  // 1) 全記事ノードの外周から GAP 離れた位置に「ラベルの端」が来る最小 R
+  let R = 0;
+  labels.forEach(lb => {
+    const dist = Math.sqrt((lb.ax - cx) ** 2 + (lb.ay - cy) ** 2);
+    R = Math.max(R, dist + ARTICLE_RADIUS + GAP);
   });
+  const R_BASE = R; // 記事ノードを外周に揃える基準値
 
-  // グループ内ラベルを現在の R で配置し lx/ly を更新するヘルパー
-  // edgeOffset: ラベル矩形の「親方向の端面」を R 上に揃える補正
-  function placeGroup(gd) {
-    const { px, py, grp, R } = gd;
-    grp.forEach(lb => {
-      const cosA = Math.cos(lb.angle), sinA = Math.sin(lb.angle);
-      const edgeOffset = Math.abs(cosA) * lb.w / 2 + Math.abs(sinA) * lb.h / 2;
-      lb.lx = px + (R + edgeOffset) * cosA;
-      lb.ly = py + (R + edgeOffset) * sinA;
-    });
+  // 2) 隣接ラベルが重ならない弦長制約
+  //    密集しても R_BASE + 50 以上には広げない（過剰な拡大を防止）
+  for (let i = 0; i < n; i++) {
+    const a = labels[i], b = labels[(i + 1) % n];
+    let dAngle = b.angle - a.angle;
+    if (dAngle <= 0) dAngle += 2 * Math.PI;
+    const sinHalf = Math.sin(Math.max(dAngle, 0.05) / 2);
+    const minChord = a.halfDiag + b.halfDiag + GAP;
+    R = Math.max(R, minChord / (2 * sinHalf));
   }
+  R = Math.min(R, R_BASE + 50);
 
-  // 全グループを初期配置
-  groupData.forEach(gd => placeGroup(gd));
-
-  // ── Phase 2: グループ間の重なりを反復解消 ──
-  // 異なるグループのラベル AABB が重なっている場合、
-  // 両グループの R を拡大して再配置する。最大 10 回反復。
-  const MAX_ITER = 10;
-  const R_CAP = 120;
-  const gdList = Array.from(groupData.values());
-
-  for (let iter = 0; iter < MAX_ITER; iter++) {
-    let changed = false;
-
-    for (let gi = 0; gi < gdList.length; gi++) {
-      for (let gj = gi + 1; gj < gdList.length; gj++) {
-        const gdA = gdList[gi], gdB = gdList[gj];
-
-        for (const lbA of gdA.grp) {
-          for (const lbB of gdB.grp) {
-            // AABB 重なり判定（text-anchor="middle" なので中心が lx/ly）
-            const overlapX = (lbA.w + lbB.w) / 2 + GAP - Math.abs(lbA.lx - lbB.lx);
-            const overlapY = (lbA.h + lbB.h) / 2 + GAP - Math.abs(lbA.ly - lbB.ly);
-
-            if (overlapX > 0 && overlapY > 0) {
-              // 重なり量の小さい軸方向へ両グループを押し広げる
-              const push = Math.min(overlapX, overlapY) / 2 + 1;
-              // R を上げるのみ（下げない）
-              if (gdA.R < R_CAP) gdA.R = Math.min(gdA.R + push, R_CAP);
-              if (gdB.R < R_CAP) gdB.R = Math.min(gdB.R + push, R_CAP);
-              placeGroup(gdA);
-              placeGroup(gdB);
-              changed = true;
-            }
-          }
-        }
-      }
-    }
-
-    if (!changed) break;
-  }
-
-  // ── Phase 3: dx/dy を SVG 属性に反映 ──
-  groupData.forEach(gd => {
-    gd.grp.forEach(lb => {
-      lb.el.setAttribute('dx', (lb.lx - lb.ax).toFixed(2));
-      lb.el.setAttribute('dy', (lb.ly - lb.ay).toFixed(2));
-    });
+  // ── 全ラベルを共通 R の円上に配置 ──
+  // edgeOffset: ラベル矩形の「中心方向の端面」を R 上に揃える補正
+  labels.forEach(lb => {
+    const cosA = Math.cos(lb.angle), sinA = Math.sin(lb.angle);
+    const edgeOffset = Math.abs(cosA) * lb.w / 2 + Math.abs(sinA) * lb.h / 2;
+    const lx = cx + (R + edgeOffset) * cosA;
+    const ly = cy + (R + edgeOffset) * sinA;
+    lb.el.setAttribute('dx', (lx - lb.ax).toFixed(2));
+    lb.el.setAttribute('dy', (ly - lb.ay).toFixed(2));
   });
 }
 
