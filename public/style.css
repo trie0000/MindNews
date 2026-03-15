@@ -1,0 +1,308 @@
+* {
+  box-sizing: border-box;
+  margin: 0;
+  padding: 0;
+}
+
+body {
+  font-family: 'Hiragino Kaku Gothic ProN', 'Noto Sans JP', sans-serif;
+  background: #0d1117;
+  color: #e6edf3;
+  min-height: 100vh;
+  display: flex;
+  flex-direction: column;
+}
+
+header {
+  display: flex;
+  align-items: center;
+  gap: 16px;
+  padding: 14px 24px;
+  background: #161b22;
+  border-bottom: 1px solid #30363d;
+  flex-shrink: 0;
+}
+
+header h1 {
+  font-size: 1.2rem;
+  font-weight: 700;
+  letter-spacing: 0.02em;
+}
+
+#meta {
+  font-size: 0.75rem;
+  color: #8b949e;
+  flex: 1;
+}
+
+/* 検索バー */
+#search-wrap {
+  display: flex;
+  align-items: center;
+  gap: 4px;
+  background: #0d1117;
+  border: 1px solid #30363d;
+  border-radius: 8px;
+  padding: 0 10px 0 0;
+  transition: border-color 0.2s;
+}
+#search-wrap:focus-within {
+  border-color: #58a6ff;
+}
+#search-input {
+  background: none;
+  border: none;
+  outline: none;
+  color: #e6edf3;
+  font-size: 0.8rem;
+  padding: 6px 8px;
+  width: 180px;
+  font-family: inherit;
+}
+#search-input::placeholder {
+  color: #484f58;
+}
+#search-clear {
+  background: none;
+  border: none;
+  color: #484f58;
+  cursor: pointer;
+  font-size: 0.75rem;
+  padding: 0 2px;
+  display: none;
+}
+#search-clear.visible {
+  display: block;
+  color: #8b949e;
+}
+
+/* ハイライト */
+.node.search-match circle {
+  filter: drop-shadow(0 0 6px currentColor);
+  stroke-width: 2.5px !important;
+}
+.node.search-dim {
+  opacity: 0.2 !important;
+}
+
+/* 新着記事ノード */
+@keyframes new-pulse {
+  0%, 100% { filter: drop-shadow(0 0 3px currentColor); }
+  50%       { filter: drop-shadow(0 0 8px currentColor) drop-shadow(0 0 14px currentColor); }
+}
+.node.new-article circle {
+  stroke-width: 2px !important;
+  animation: new-pulse 2.4s ease-in-out infinite;
+}
+
+/* 新着ドットバッジのパルス */
+@keyframes dot-pulse {
+  0%, 100% { opacity: 1;   transform: scale(1); }
+  50%       { opacity: 0.7; transform: scale(1.3); }
+}
+.new-dot {
+  transform-origin: center;
+  transform-box: fill-box;
+  animation: dot-pulse 2s ease-in-out infinite;
+}
+
+#refresh-btn {
+  padding: 6px 14px;
+  background: #238636;
+  color: #fff;
+  border: none;
+  border-radius: 6px;
+  cursor: pointer;
+  font-size: 0.82rem;
+  transition: background 0.2s;
+}
+#refresh-btn:hover {
+  background: #2ea043;
+}
+#refresh-btn:disabled {
+  background: #30363d;
+  cursor: not-allowed;
+}
+
+#loading {
+  flex: 1;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  gap: 16px;
+  color: #8b949e;
+}
+
+.spinner {
+  width: 40px;
+  height: 40px;
+  border: 3px solid #30363d;
+  border-top-color: #58a6ff;
+  border-radius: 50%;
+  animation: spin 0.9s linear infinite;
+}
+
+@keyframes spin {
+  to { transform: rotate(360deg); }
+}
+
+#error-msg {
+  flex: 1;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  color: #f85149;
+  font-size: 0.9rem;
+  padding: 24px;
+  text-align: center;
+}
+
+#map-container {
+  flex: 1;
+  display: none;
+  overflow: hidden;
+}
+
+#mindmap {
+  width: 100%;
+  height: 100%;
+}
+
+/* D3 SVG styles — stroke-opacity は D3 側で管理 */
+.link {
+  fill: none;
+}
+
+.node circle {
+  transition: r 0.2s, fill 0.2s;
+  cursor: pointer;
+}
+.node text {
+  pointer-events: none;
+  font-size: 11px;
+  fill: #c9d1d9;
+}
+.node.center circle {
+  cursor: default;
+}
+.node.category circle {
+  cursor: pointer;
+}
+.node.article circle {
+  cursor: pointer;
+}
+.node.article:hover circle {
+  filter: brightness(1.3);
+}
+
+/* 記事詳細パネル */
+#detail-panel {
+  position: fixed;
+  top: 60px;
+  right: -360px;
+  width: 340px;
+  height: calc(100vh - 60px);
+  background: #161b22;
+  border-left: 1px solid #30363d;
+  padding: 24px 20px;
+  display: flex;
+  flex-direction: column;
+  gap: 14px;
+  transition: right 0.3s cubic-bezier(0.4, 0, 0.2, 1);
+  z-index: 200;
+  overflow-y: auto;
+}
+#detail-panel.open {
+  right: 0;
+}
+#detail-close {
+  align-self: flex-end;
+  background: none;
+  border: 1px solid #30363d;
+  border-radius: 6px;
+  color: #8b949e;
+  cursor: pointer;
+  font-size: 0.9rem;
+  padding: 4px 10px;
+  transition: border-color 0.2s, color 0.2s;
+}
+#detail-close:hover {
+  border-color: #58a6ff;
+  color: #58a6ff;
+}
+#detail-category {
+  font-size: 0.72rem;
+  color: #8b949e;
+  text-transform: uppercase;
+  letter-spacing: 0.08em;
+}
+#detail-title {
+  font-size: 1rem;
+  font-weight: 700;
+  line-height: 1.55;
+  color: #e6edf3;
+}
+#detail-summary {
+  font-size: 0.83rem;
+  color: #8b949e;
+  line-height: 1.65;
+  flex: 1;
+}
+#detail-link {
+  display: inline-block;
+  padding: 9px 18px;
+  background: #238636;
+  color: #fff;
+  text-decoration: none;
+  border-radius: 8px;
+  font-size: 0.85rem;
+  font-weight: 600;
+  transition: background 0.2s;
+  text-align: center;
+}
+#detail-link:hover {
+  background: #2ea043;
+}
+
+/* フォーカスモード戻るボタン */
+#back-btn {
+  position: fixed;
+  bottom: 24px;
+  left: 24px;
+  background: #161b22;
+  border: 1px solid #30363d;
+  color: #c9d1d9;
+  padding: 8px 16px;
+  border-radius: 8px;
+  cursor: pointer;
+  font-size: 0.83rem;
+  z-index: 200;
+  transition: border-color 0.2s, color 0.2s;
+}
+#back-btn:hover {
+  border-color: #58a6ff;
+  color: #58a6ff;
+}
+
+/* Tooltip */
+#tooltip {
+  position: fixed;
+  background: #161b22;
+  border: 1px solid #30363d;
+  border-radius: 8px;
+  padding: 10px 14px;
+  font-size: 0.78rem;
+  color: #c9d1d9;
+  max-width: 280px;
+  line-height: 1.5;
+  pointer-events: none;
+  opacity: 0;
+  transition: opacity 0.15s;
+  z-index: 100;
+  white-space: pre-wrap;
+  word-break: break-all;
+}
+#tooltip.visible {
+  opacity: 1;
+}

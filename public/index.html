@@ -1,0 +1,49 @@
+<!DOCTYPE html>
+<html lang="ja">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>MindNews</title>
+  <link rel="stylesheet" href="style.css" />
+</head>
+<body>
+  <header>
+    <h1>🗺️ MindNews</h1>
+    <div id="meta"></div>
+    <div id="search-wrap">
+      <input id="search-input" type="text" placeholder="🔍 記事を検索..." autocomplete="off" />
+      <button id="search-clear" aria-label="クリア">✕</button>
+    </div>
+    <button id="refresh-btn">🔄 更新</button>
+  </header>
+
+  <div id="loading">
+    <div class="spinner"></div>
+    <p id="loading-msg">SmartNews を取得中...</p>
+  </div>
+
+  <div id="error-msg" style="display:none"></div>
+
+  <div id="map-container">
+    <svg id="mindmap"></svg>
+  </div>
+
+  <!-- Tooltip -->
+  <div id="tooltip"></div>
+
+  <!-- 記事詳細パネル（右スライドイン） -->
+  <div id="detail-panel">
+    <button id="detail-close" aria-label="閉じる">✕</button>
+    <div id="detail-category"></div>
+    <h2 id="detail-title"></h2>
+    <p id="detail-summary"></p>
+    <a id="detail-link" href="#" target="_blank" rel="noopener">記事を読む →</a>
+  </div>
+
+  <!-- フォーカスモード戻るボタン -->
+  <button id="back-btn" style="display:none">← 全体に戻る</button>
+
+  <script src="https://cdn.jsdelivr.net/npm/d3@7/dist/d3.min.js"></script>
+  <script src="app.js"></script>
+</body>
+</html>

@@ -1,0 +1,5 @@
+node_modules/
+article_cache.json
+.env
+*.log
+.DS_Store
