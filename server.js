@@ -93,7 +93,8 @@ ${list}
   ]
 }
 
-カテゴリは スポーツ/政治/国際/経済/芸能/テクノロジー/社会/文化/健康/その他 から選択。ラベルと要約は必ず日本語（ひらがな・カタカナ・漢字）で記述。`;
+カテゴリは スポーツ/政治/国際/経済/芸能/テクノロジー/社会/文化/健康/その他 から選択。
+ラベルと要約は必ず日本語で記述。ラベルは元の記事タイトルの主要語を漢字・カタカナで使うこと。ひらがなのみのラベルは禁止。`;
 
   const response = await axios.post(
     `${OLLAMA_BASE}/api/chat`,
@@ -138,6 +139,9 @@ function isValidJapaneseLabel(label) {
   if (!/[\u3040-\u30ff\u4e00-\u9fff]/.test(label)) return false;
   // 3文字以上の英字連続はNG（コードや英語混入）
   if (/[a-zA-Z]{3,}/.test(label)) return false;
+  // 3文字以上のひらがなのみラベルは読み仮名を誤出力しているとみなし無効
+  // （qwen2.5 が漢字→読み仮名に変換してしまう問題への対処）
+  if (label.length >= 3 && /^[\u3040-\u309f\s・]+$/.test(label)) return false;
   return true;
 }
 
